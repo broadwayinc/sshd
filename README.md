@@ -2,6 +2,8 @@
 
 `sshd` opens an ssh session to a remote host using a saved key, user and host, optionally starting in a given folder.
 
+It works on Linux and macOS with the system Bash and SSH.
+
 ## Install
 
 From the directory containing `sshd.sh`, run:
@@ -10,7 +12,7 @@ From the directory containing `sshd.sh`, run:
 ./install-sshd.sh
 ```
 
-This installs the `sshd` command in `~/.local/bin` (or `$XDG_BIN_HOME` if set) and optionally enables tab completion in `~/.bashrc` (`--completion` / `--no-completion` skip the question). If that directory is not in your `PATH`, add it as instructed by the installer and open a new terminal. Make sure `~/.local/bin` comes before `/usr/sbin` in `PATH`, otherwise the OpenSSH daemon binary of the same name may be found first.
+This installs the `sshd` command in `~/.local/bin` (or `$XDG_BIN_HOME` if set) and optionally enables tab completion in `~/.zshrc` when `$SHELL` is zsh (the macOS default), or `~/.bashrc` otherwise (`--completion` / `--no-completion` skip the question). Set `ZSHRC` or `BASHRC` to override the corresponding path; zsh also respects `ZDOTDIR`. For a Bash login shell, ensure your profile sources `~/.bashrc`. If the bin directory is not in your `PATH`, add it as instructed by the installer and open a new terminal. Make sure it comes before `/usr/sbin` in `PATH`, otherwise the OpenSSH daemon binary of the same name may be found first.
 
 Remove the command and the completion block with `./uninstall-sshd.sh`.
 
@@ -20,32 +22,11 @@ Remove the command and the completion block with `./uninstall-sshd.sh`.
 curl -fsSL https://raw.githubusercontent.com/broadwayinc/sshd/main/install-sshd.sh | bash
 ```
 
-When `install-sshd.sh` is not next to `sshd.sh` (piped into `bash`, or downloaded on its own), it downloads `sshd.sh`, `sshd-completion.bash`, `README.md` and `uninstall-sshd.sh` into `~/.local/share/sshd` (or `$SSHD_HOME`) and installs the command from there. It still asks about tab completion; to answer up front, end the command with `| bash -s -- --completion` or `| bash -s -- --no-completion`.
+When `install-sshd.sh` is not next to `sshd.sh` (piped into `bash`, or downloaded on its own), it downloads `sshd.sh`, `sshd-completion.bash`, `sshd-completion.zsh`, `README.md` and `uninstall-sshd.sh` into `~/.local/share/sshd` (or `$SSHD_HOME`) and installs the command from there. It still asks about tab completion; to answer up front, end the command with `| bash -s -- --completion` or `| bash -s -- --no-completion`.
 
 Targets are saved in `~/.local/share/sshd/sshd.conf`. If the previous `sshd` launcher pointed at another copy that has a `sshd.conf`, that file is copied over. Your SSH key is not part of the install: copy it to the new machine, then run `sshd -c`.
 
 Run the same command again to update; saved targets are kept. To uninstall, run `bash ~/.local/share/sshd/uninstall-sshd.sh`, then delete `~/.local/share/sshd` if you also want to remove saved targets.
-
-### Host the installer on your own server
-
-Put `install-sshd.sh` on any web server and install with:
-
-```bash
-curl -fsSL https://my.server.com/install-sshd.sh | bash
-```
-
-The installer still downloads the other files from GitHub. To serve everything yourself, put the four files listed above in the same folder as `install-sshd.sh` and change `DEFAULT_BASE_URL` at the top of your copy to that folder's URL (or set it for one run: `curl -fsSL URL | SSHD_BASE_URL=https://my.server.com/sshd bash`).
-
-For a shorter URL such as `https://my.server.com/sshd`, map the path to the file, for example in nginx:
-
-```nginx
-location = /sshd {
-    default_type text/plain;
-    alias /var/www/install/install-sshd.sh;
-}
-```
-
-Use HTTPS and `curl -fsSL`: without `-f`, curl pipes an error page into `bash`. The installer refuses a downloaded file that is not a bash script, and does nothing if the installer itself was cut off mid-download.
 
 ## Configure
 

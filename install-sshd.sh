@@ -14,18 +14,21 @@ set -euo pipefail
 # Where a web install downloads from. Point this (or SSHD_BASE_URL) at your own server
 # if you host the files yourself.
 DEFAULT_BASE_URL="https://raw.githubusercontent.com/broadwayinc/sshd/main"
-WEB_FILES=(sshd.sh sshd-completion.bash README.md uninstall-sshd.sh)
+WEB_FILES=(sshd.sh sshd-completion.bash sshd-completion.zsh README.md uninstall-sshd.sh)
 
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 COMMAND_PATH="$BIN_DIR/sshd"
 BASHRC="${BASHRC:-$HOME/.bashrc}"
+ZSHRC="${ZSHRC:-${ZDOTDIR:-$HOME}/.zshrc}"
+RC_FILE="$BASHRC"
+[[ "${SHELL:-}" != */zsh ]] || RC_FILE="$ZSHRC"
 BEGIN_MARK="# >>> sshd completion >>>"
 END_MARK="# <<< sshd completion <<<"
 COMPLETION="ask"
 CLEANUP=()
 
 cleanup() {
-  [[ ${#CLEANUP[@]} -eq 0 ]] || rm -rf -- "${CLEANUP[@]}"
+  [[ -z "${CLEANUP[*]-}" ]] || rm -rf -- "${CLEANUP[@]}"
 }
 
 # Ask a y/N question on the terminal. Reads /dev/tty when stdin is not one, which is the
@@ -67,11 +70,20 @@ download_files() {
       exit 1
     fi
     # A web server may answer a missing file with an HTML page; never install that as a script.
-    if [[ "$f" == *.sh || "$f" == *.bash ]]; then
+    if [[ "$f" == *.sh || "$f" == *.bash || "$f" == *.zsh ]]; then
       first=""
       IFS= read -r first < "$tmp/$f" || true
-      if [[ "$first" != \#* ]] || ! bash -n "$tmp/$f" 2>/dev/null; then
-        echo "Not a bash script: $base/$f" >&2
+      if [[ "$first" != \#* ]]; then
+        echo "Not a shell script: $base/$f" >&2
+        exit 1
+      fi
+      if [[ "$f" == *.zsh ]]; then
+        if command -v zsh >/dev/null 2>&1 && ! zsh -n "$tmp/$f"; then
+          echo "Invalid zsh script: $base/$f" >&2
+          exit 1
+        fi
+      elif ! bash -n "$tmp/$f"; then
+        echo "Invalid bash script: $base/$f" >&2
         exit 1
       fi
     fi
@@ -87,39 +99,41 @@ strip_completion_block() {
     $0 == b { skip = 1 }
     !skip { print }
     $0 == e { skip = 0 }
-  ' "$BASHRC"
+  ' "$RC_FILE"
 }
 
 setup_completion() {
   [[ -f "$COMPLETION_PATH" ]] || return 0
   local has_block=false cleaned
-  [[ -f "$BASHRC" ]] && grep -qxF "$BEGIN_MARK" "$BASHRC" && has_block=true
+  [[ -f "$RC_FILE" ]] && grep -qxF "$BEGIN_MARK" "$RC_FILE" && has_block=true
 
   if [[ "$has_block" != true ]]; then
     if [[ "$COMPLETION" == "ask" ]]; then
-      if confirm "Enable tab completion for sshd by adding a block to $BASHRC?"; then
+      if confirm "Enable tab completion for sshd by adding a block to $RC_FILE?"; then
         COMPLETION="yes"
       else
         COMPLETION="no"
       fi
     fi
     if [[ "$COMPLETION" != "yes" ]]; then
-      echo "Tab completion not enabled. To enable it, add this to $BASHRC:"
+      echo "Tab completion not enabled. To enable it, add this to $RC_FILE:"
+      [[ "$RC_FILE" != "$ZSHRC" ]] || echo '  autoload -Uz compinit; (( $+functions[compdef] )) || compinit'
       printf '  source %q\n' "$COMPLETION_PATH"
       return 0
     fi
   fi
 
-  touch -- "$BASHRC"
+  touch -- "$RC_FILE"
   cleaned="$(strip_completion_block; printf x)"
   cleaned="${cleaned%x}"
   {
     printf '%s' "$cleaned"
     printf '%s\n' "$BEGIN_MARK"
+    [[ "$RC_FILE" != "$ZSHRC" ]] || printf '%s\n' 'autoload -Uz compinit; (( $+functions[compdef] )) || compinit'
     printf '[ -f %q ] && source %q\n' "$COMPLETION_PATH" "$COMPLETION_PATH"
     printf '%s\n' "$END_MARK"
-  } > "$BASHRC"
-  echo "Tab completion enabled in $BASHRC (open a new terminal to use it)."
+  } > "$RC_FILE"
+  echo "Tab completion enabled in $RC_FILE (open a new terminal to use it)."
 }
 
 # When the launcher moves to another copy of sshd.sh, bring the old copy's targets along.
@@ -165,6 +179,7 @@ main() {
   fi
   SCRIPT_PATH="$SCRIPT_DIR/sshd.sh"
   COMPLETION_PATH="$SCRIPT_DIR/sshd-completion.bash"
+  [[ "$RC_FILE" != "$ZSHRC" ]] || COMPLETION_PATH="$SCRIPT_DIR/sshd-completion.zsh"
 
   if [[ ! -f "$SCRIPT_PATH" ]]; then
     echo "Script not found: $SCRIPT_PATH" >&2
@@ -187,10 +202,10 @@ main() {
       exit 0
     fi
 
-    local replaceable=false old_script="" existing_lines=()
+    local replaceable=false old_script="" line existing_lines=()
     if [[ -f "$COMMAND_PATH" && ! -L "$COMMAND_PATH" ]]; then
-      mapfile -t existing_lines < "$COMMAND_PATH"
-      if [[ ${#existing_lines[@]} -eq 3 &&
+      while IFS= read -r line || [[ -n "$line" ]]; do existing_lines+=("$line"); done < "$COMMAND_PATH"
+      if [[ -n "${existing_lines[0]-}" && ${#existing_lines[@]} -eq 3 &&
             "${existing_lines[0]}" == '#!/usr/bin/env bash' &&
             "${existing_lines[1]}" == '# Managed by install-sshd.sh' &&
             "${existing_lines[2]}" == exec\ bash\ *\ \"\$@\" ]]; then

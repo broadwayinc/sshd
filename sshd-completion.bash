@@ -3,16 +3,23 @@
 
 _SSHD_SH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/sshd.sh"
 
+_sshd_read_compreply() {
+  local line
+  COMPREPLY=()
+  while IFS= read -r line; do COMPREPLY+=("$line"); done
+}
+
 _sshd_complete() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local prev="" i line esc
   local -a flags=() lines=()
+  _SSHD_LOCAL_COMPLETION=false
   COMPREPLY=()
   [[ $COMP_CWORD -ge 1 ]] && prev="${COMP_WORDS[COMP_CWORD-1]}"
 
   case "$prev" in
-    -i) mapfile -t COMPREPLY < <(compgen -f -- "$cur"); return 0 ;;
-    -t) mapfile -t COMPREPLY < <(compgen -W "$(bash "$_SSHD_SH" -N 2>/dev/null)" -- "$cur"); return 0 ;;
+    -i) _SSHD_LOCAL_COMPLETION=true; _sshd_read_compreply < <(compgen -f -- "$cur"); return 0 ;;
+    -t) _sshd_read_compreply < <(compgen -W "$(bash "$_SSHD_SH" -N 2>/dev/null)" -- "$cur"); return 0 ;;
     -u|-H) return 0 ;;
   esac
 
@@ -29,7 +36,7 @@ _sshd_complete() {
   done
 
   if [[ "$cur" == -* ]]; then
-    mapfile -t COMPREPLY < <(compgen -W "-t -i -u -H -c -T -d -h" -- "$cur")
+    _sshd_read_compreply < <(compgen -W "-t -i -u -H -c -T -d -h" -- "$cur")
     return 0
   fi
 
@@ -41,9 +48,9 @@ _sshd_complete() {
   else
     cur="${cur//\\/}"
   fi
-  mapfile -t lines < <(bash "$_SSHD_SH" "${flags[@]}" -C "$cur" 2>/dev/null)
+  while IFS= read -r line; do lines+=("$line"); done < <(bash "$_SSHD_SH" ${flags[@]+"${flags[@]}"} -C "$cur" 2>/dev/null)
 
-  for line in "${lines[@]}"; do
+  for line in ${lines[@]+"${lines[@]}"}; do
     case "$q" in
       "'")
         esc="'${line//\'/\'\\\'\'}"
@@ -58,7 +65,7 @@ _sshd_complete() {
         ;;
     esac
     if [[ "$line" == */ ]]; then
-      compopt -o nospace 2>/dev/null
+      type compopt >/dev/null 2>&1 && compopt -o nospace 2>/dev/null
     elif [[ -n "$q" ]]; then
       esc+="$q"
     fi
@@ -67,4 +74,28 @@ _sshd_complete() {
   return 0
 }
 
-complete -F _sshd_complete sshd
+_sshd_complete_legacy() {
+  local item escaped
+  local -a results=()
+  _sshd_complete
+  for item in ${COMPREPLY[@]+"${COMPREPLY[@]}"}; do
+    if [[ "$_SSHD_LOCAL_COMPLETION" == true ]]; then
+      printf -v escaped '%q' "$item"
+      if [[ -d "$item" ]]; then
+        item="$escaped/"
+      else
+        item="$escaped "
+      fi
+    elif [[ "$item" != */ ]]; then
+      item="$item "
+    fi
+    results+=("$item")
+  done
+  COMPREPLY=(${results[@]+"${results[@]}"})
+}
+
+if type compopt >/dev/null 2>&1; then
+  complete -F _sshd_complete sshd
+else
+  complete -o nospace -F _sshd_complete_legacy sshd
+fi

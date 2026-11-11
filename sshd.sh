@@ -249,8 +249,8 @@ open_docs() {
 
 # Quote a remote path for the remote shell, keeping a leading ~ or ~user expandable.
 remote_quote() {
-  local p="$1" head="" rest="$1" sq="'\\''" q="'"
-  if [[ "$p" =~ ^(~[A-Za-z0-9_.-]*)(/.*)?$ ]]; then
+  local p="$1" head="" rest="$1" sq="'\\''" q="'" re='^(~[A-Za-z0-9_.-]*)(/.*)?$'
+  if [[ "$p" =~ $re ]]; then
     head="${BASH_REMATCH[1]}"
     rest="${BASH_REMATCH[2]#/}"
     [[ -n "$head" ]] && head="$head/"
@@ -280,7 +280,7 @@ complete_paths() {
   ssh -i "$KEY" -o BatchMode=yes -o ConnectTimeout=5 \
     -o ControlMaster=auto -o ControlPersist=60 \
     -o "ControlPath=${XDG_RUNTIME_DIR:-$HOME/.ssh}/sshd-%C" \
-    "$USER_NAME@$HOST" "ls -1ApL -- $(remote_quote "$dir") 2>/dev/null" 2>/dev/null |
+    "$USER_NAME@$HOST" "ls -1ApL $(remote_quote "$dir") 2>/dev/null" 2>/dev/null |
     while IFS= read -r entry; do
       [[ "$entry" == */ ]] || continue
       [[ -z "$base" && "$entry" == .* ]] && continue
