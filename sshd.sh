@@ -135,7 +135,7 @@ save_target() {
     fi
     printf '\n[%s]\nkey = %s\nuser = %s\nhost = %s\n' "$name" "$key" "$user" "$host"
     [[ -z "$start_dir" ]] || printf 'dir = %s\n' "$start_dir"
-  } | cat -s | sed '1{/^$/d}' > "$tmp"
+  } | cat -s | awk 'NR > 1 || $0 != ""' > "$tmp"
   mv -- "$tmp" "$CONFIG"
 }
 
